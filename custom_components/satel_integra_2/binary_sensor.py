@@ -10,14 +10,17 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
+from slugify import slugify
+
 from . import (
     CONF_OUTPUTS,
-    CONF_ZONE_NAME,
-    CONF_ZONE_TYPE,
-    CONF_ZONES,
+    CONF_INPUT_NAME,
+    CONF_INPUT_TYPE,
+    CONF_INPUTS,
     DATA_SATEL,
     SIGNAL_OUTPUTS_UPDATED,
     SIGNAL_ZONES_UPDATED,
+    CONF_PARTITION,
 )
 
 
@@ -31,26 +34,29 @@ async def async_setup_platform(
     if not discovery_info:
         return
 
-    configured_zones = discovery_info[CONF_ZONES]
-    controller = hass.data[DATA_SATEL]
+    configured_zones = discovery_info[CONF_INPUTS]
+    partition_id = discovery_info[CONF_PARTITION]
+    controller = hass.data[f"{DATA_SATEL}_partition_{partition_id}"]
 
     devices = []
 
-    for zone_num, device_config_data in configured_zones.items():
-        zone_type = device_config_data[CONF_ZONE_TYPE]
-        zone_name = device_config_data[CONF_ZONE_NAME]
+    for input_num, device_config_data in configured_zones.items():
+        input_type = device_config_data[CONF_INPUT_TYPE]
+        input_name = device_config_data[CONF_INPUT_NAME]
+        input_unique_id = slugify(f"partition_{partition_id}_{device_config_data[CONF_INPUT_NAME]}", separator="_")
         device = SatelIntegraBinarySensor(
-            controller, zone_num, zone_name, zone_type, SIGNAL_ZONES_UPDATED
+            controller, input_num, input_unique_id, input_name, input_type, SIGNAL_ZONES_UPDATED
         )
         devices.append(device)
 
     configured_outputs = discovery_info[CONF_OUTPUTS]
 
-    for zone_num, device_config_data in configured_outputs.items():
-        zone_type = device_config_data[CONF_ZONE_TYPE]
-        zone_name = device_config_data[CONF_ZONE_NAME]
+    for input_num, device_config_data in configured_outputs.items():
+        input_type = device_config_data[CONF_INPUT_TYPE]
+        input_name = device_config_data[CONF_INPUT_NAME]
+        input_unique_id = slugify(f"partition_{partition_id}_{device_config_data[CONF_INPUT_NAME]}", separator="_")
         device = SatelIntegraBinarySensor(
-            controller, zone_num, zone_name, zone_type, SIGNAL_OUTPUTS_UPDATED
+            controller, input_num, input_unique_id, input_name, input_type, SIGNAL_OUTPUTS_UPDATED
         )
         devices.append(device)
 
@@ -63,12 +69,13 @@ class SatelIntegraBinarySensor(BinarySensorEntity):
     _attr_should_poll = False
 
     def __init__(
-        self, controller, device_number, device_name, zone_type, react_to_signal
+        self, controller, device_number, attr_unique_id, device_name, input_type, react_to_signal
     ):
         """Initialize the binary_sensor."""
         self._device_number = device_number
+        self._attr_unique_id = attr_unique_id
         self._name = device_name
-        self._zone_type = zone_type
+        self._input_type = input_type
         self._state = 0
         self._react_to_signal = react_to_signal
         self._satel = controller
@@ -99,7 +106,7 @@ class SatelIntegraBinarySensor(BinarySensorEntity):
     @property
     def icon(self):
         """Icon for device by its type."""
-        if self._zone_type is BinarySensorDeviceClass.SMOKE:
+        if self._input_type is BinarySensorDeviceClass.SMOKE:
             return "mdi:fire"
 
     @property
@@ -110,11 +117,11 @@ class SatelIntegraBinarySensor(BinarySensorEntity):
     @property
     def device_class(self):
         """Return the class of this sensor, from DEVICE_CLASSES."""
-        return self._zone_type
+        return self._input_type
 
     @callback
-    def _devices_updated(self, zones):
+    def _devices_updated(self, inputs):
         """Update the zone's state, if needed."""
-        if self._device_number in zones and self._state != zones[self._device_number]:
-            self._state = zones[self._device_number]
+        if self._device_number in inputs and self._state != inputs[self._device_number]:
+            self._state = inputs[self._device_number]
             self.async_write_ha_state()

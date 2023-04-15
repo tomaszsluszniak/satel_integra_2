@@ -15,17 +15,18 @@ from homeassistant.helpers.typing import ConfigType
 
 DEFAULT_ALARM_NAME = "satel_integra_2"
 DEFAULT_PORT = 7094
-DEFAULT_CONF_ARM_HOME_MODE = 1
+DEFAULT_CONF_ARM_HOME_MODE = 0
 DEFAULT_DEVICE_ZONE = 1
 DEFAULT_INPUT_TYPE = "motion"
 
 _LOGGER = logging.getLogger(__name__)
 
-DOMAIN = "satel_integra"
+DOMAIN = "satel_integra_2"
 
-DATA_SATEL = "satel_integra"
+DATA_SATEL = "satel_integra_2"
 
 CONF_DEVICE_CODE = "code"
+CONF_PARTITION = "partition"
 CONF_PARTITIONS = "partitions"
 CONF_ZONES = "zones"
 CONF_ARM_HOME_MODE = "arm_home_mode"
@@ -34,8 +35,6 @@ CONF_INPUT_TYPE = "type"
 CONF_INPUTS = "inputs"
 CONF_OUTPUTS = "outputs"
 CONF_SWITCHABLE_OUTPUTS = "switchable_outputs"
-
-INPUTS = "inputs"
 
 SIGNAL_PANEL_MESSAGE = f"{DOMAIN}.panel_message"
 SIGNAL_PANEL_ARM_AWAY = f"{DOMAIN}.panel_arm_away"
@@ -56,11 +55,6 @@ EDITABLE_OUTPUT_SCHEMA = vol.Schema({vol.Required(CONF_INPUT_NAME): cv.string})
 ZONE_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_INPUT_NAME): cv.string,
-        vol.Optional(CONF_INPUTS, default={}): {vol.Coerce(int): INPUT_SCHEMA},
-        vol.Optional(CONF_OUTPUTS, default={}): {vol.Coerce(int): INPUT_SCHEMA},
-        vol.Optional(CONF_SWITCHABLE_OUTPUTS, default={}): {
-            vol.Coerce(int): EDITABLE_OUTPUT_SCHEMA
-        },
     }
 )
 
@@ -70,7 +64,12 @@ PARTITION_SCHEMA = vol.Schema(
         vol.Optional(CONF_ARM_HOME_MODE, default=DEFAULT_CONF_ARM_HOME_MODE): vol.In(
             [0, 1, 2, 3]
         ),
-        vol.Optional(CONF_ZONES, default={}): {vol.Coerce(int): ZONE_SCHEMA}
+        vol.Optional(CONF_ZONES, default={}): {vol.Coerce(int): ZONE_SCHEMA},
+        vol.Optional(CONF_INPUTS, default={}): {vol.Coerce(int): INPUT_SCHEMA},
+        vol.Optional(CONF_OUTPUTS, default={}): {vol.Coerce(int): INPUT_SCHEMA},
+        vol.Optional(CONF_SWITCHABLE_OUTPUTS, default={}): {
+            vol.Coerce(int): EDITABLE_OUTPUT_SCHEMA
+        },
     }
 )
 
@@ -118,7 +117,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     def inputs_update_callback(status):
         """Update input objects as per notification from the alarm."""
         _LOGGER.debug("Inputs callback, status: %s", status)
-        async_dispatcher_send(hass, SIGNAL_ZONES_UPDATED, status[INPUTS])
+        async_dispatcher_send(hass, SIGNAL_ZONES_UPDATED, status[CONF_ZONES])
 
     @callback
     def outputs_update_callback(status):
@@ -165,7 +164,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 hass,
                 Platform.BINARY_SENSOR,
                 DOMAIN,
-                {CONF_INPUTS: inputs, CONF_OUTPUTS: outputs},
+                {
+                    CONF_INPUTS: inputs, 
+                    CONF_OUTPUTS: outputs, 
+                    CONF_PARTITION: partition_id,
+                },
                 config,
             )
         )
@@ -178,6 +181,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 {
                     CONF_SWITCHABLE_OUTPUTS: switchable_outputs,
                     CONF_DEVICE_CODE: conf.get(CONF_DEVICE_CODE),
+                    CONF_PARTITION: partition_id,
                 },
                 config,
             )

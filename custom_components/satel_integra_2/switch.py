@@ -10,12 +10,15 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
+from slugify import slugify
+
 from . import (
     CONF_DEVICE_CODE,
     CONF_SWITCHABLE_OUTPUTS,
-    CONF_ZONE_NAME,
     DATA_SATEL,
     SIGNAL_OUTPUTS_UPDATED,
+    CONF_INPUT_NAME,
+    CONF_PARTITION, 
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -32,21 +35,24 @@ async def async_setup_platform(
     """Set up the Satel Integra switch devices."""
     if not discovery_info:
         return
-
-    configured_zones = discovery_info[CONF_SWITCHABLE_OUTPUTS]
-    controller = hass.data[DATA_SATEL]
+    
+    configured_outputs = discovery_info[CONF_SWITCHABLE_OUTPUTS]
+    partition_id = discovery_info[CONF_PARTITION]
+    controller = hass.data[f"{DATA_SATEL}_partition_{partition_id}"]
 
     devices = []
 
-    for zone_num, device_config_data in configured_zones.items():
-        zone_name = device_config_data[CONF_ZONE_NAME]
+    for output_num, device_config_data in configured_outputs.items():
+        output_name = device_config_data[CONF_INPUT_NAME]
+        output_unique_id = slugify(f"partition_{partition_id}_{device_config_data[CONF_INPUT_NAME]}", separator="_")
 
         device = SatelIntegraSwitch(
-            controller, zone_num, zone_name, discovery_info[CONF_DEVICE_CODE]
+            controller, output_num, output_unique_id, output_name, discovery_info[CONF_DEVICE_CODE]
         )
         devices.append(device)
 
     async_add_entities(devices)
+  
 
 
 class SatelIntegraSwitch(SwitchEntity):
@@ -54,9 +60,10 @@ class SatelIntegraSwitch(SwitchEntity):
 
     _attr_should_poll = False
 
-    def __init__(self, controller, device_number, device_name, code):
+    def __init__(self, controller, device_number, attr_unique_id, device_name, code):
         """Initialize the binary_sensor."""
         self._device_number = device_number
+        self._attr_unique_id = attr_unique_id
         self._name = device_name
         self._state = False
         self._code = code
@@ -69,10 +76,10 @@ class SatelIntegraSwitch(SwitchEntity):
         )
 
     @callback
-    def _devices_updated(self, zones):
+    def _devices_updated(self, inputs):
         """Update switch state, if needed."""
-        _LOGGER.debug("Update switch name: %s zones: %s", self._name, zones)
-        if self._device_number in zones:
+        _LOGGER.debug("Update switch name: %s inputs: %s", self._name, inputs)
+        if self._device_number in inputs:
             new_state = self._read_state()
             _LOGGER.debug("New state: %s", new_state)
             if new_state != self._state:
